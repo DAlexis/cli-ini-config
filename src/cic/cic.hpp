@@ -3,11 +3,14 @@
 
 #include "utils.hpp"
 #include <boost/program_options.hpp>
+#include <boost/property_tree/ptree.hpp>
 #include <stdexcept>
 #include <string>
 #include <list>
 #include <memory>
 #include <iostream>
+
+#include <initializer_list>
 
 #ifndef DEBUG
 	#define DEBUG
@@ -30,6 +33,7 @@ public:
 
 	virtual void addToPO(boost::program_options::options_description& od) const = 0;
 	virtual bool getFromPO(const boost::program_options::variables_map& clOpts) = 0;
+	virtual bool getFromPT(const boost::property_tree::ptree& pt) = 0;
 
 	virtual void writeIniItem(std::ostream& stream) = 0;
 
@@ -55,7 +59,6 @@ struct Parameter : public IAnyTypeParameter
 	{ }
 
 	Parameter(const char* name, const char* description) :
-		m_value(0.0),
 		m_name(name),
 		m_description(description),
 		m_isInitialized(false)
@@ -79,13 +82,15 @@ struct Parameter : public IAnyTypeParameter
 	{
 		return StringTool<T>::to_string(m_value);
 	}
-
+/*
 	Parameter& operator=(const Parameter& right)
 	{
 		m_isInitialized = right.m_isInitialized;
 		m_value = right.m_value;
+		m_name = right.m_name;
+		m_description = right.m_description;
 		return *this;
-	}
+	}*/
 
 	void addToPO(boost::program_options::options_description& od) const override
 	{
@@ -103,8 +108,21 @@ struct Parameter : public IAnyTypeParameter
 		{
 			m_value = clOpts[m_name.c_str()].as<T>();
 			m_setByUser = true;
+			m_isInitialized = true;
 		}
-		return setByUser();
+		return initialized();
+	}
+
+	bool getFromPT(const boost::property_tree::ptree& pt)
+	{
+		if (pt.count(m_name.c_str()) != 0)
+		{
+			m_value = pt.get<T>(m_name.c_str());
+			m_setByUser = true;
+			m_isInitialized = true;
+		}
+
+		return initialized();
 	}
 
 	void writeIniItem(std::ostream& stream) override
@@ -131,8 +149,8 @@ struct Parameter : public IAnyTypeParameter
 
 private:
 	T m_value;
-	const std::string m_name;
-	const std::string m_description;
+	std::string m_name;
+	std::string m_description;
 	bool m_isInitialized;
 	bool m_setByUser = false;
 };
@@ -140,10 +158,39 @@ private:
 class ParametersGroup
 {
 public:
+	ParametersGroup(const std::string& groupName);
+	template <typename... Args>
+	void add(const IAnyTypeParameter& parameter, Args... args)
+	{
+		add(parameter);
+		add(args...);
+	}
 	void add(const IAnyTypeParameter& parameter);
-	void readPO(const boost::program_options::variables_map& clOpts);
+
+	void readPOVarsMap(const boost::program_options::variables_map& clOpts);
+	const boost::program_options::options_description& getOptionsDesctiption();
+
+	/**
+	 * Read variables from boost::property_tree
+	 * returns false if at least one parameter in this group is not initialized yet
+	 */
+	bool readPT(const boost::property_tree::ptree& pt);
+	void writeIniItem(std::ostream& stream);
+
+	IAnyTypeParameter& getInterface(const std::string& name);
+
+	template <typename T>
+	T& get(const std::string& name)
+	{
+		return dynamic_cast<Parameter<T>&>(getInterface(name)).get();
+	}
+
 private:
-	std::list<std::unique_ptr<IAnyTypeParameter>> m_parameters;
+	boost::program_options::options_description m_optionsDescr;
+
+	bool areAllInitialized();
+	std::string m_groupName;
+	std::map<std::string, std::unique_ptr<IAnyTypeParameter>> m_parameters;
 };
 
 
