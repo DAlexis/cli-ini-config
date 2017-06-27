@@ -159,6 +159,7 @@ class ParametersGroup
 {
 public:
 	ParametersGroup(const std::string& groupName);
+	const std::string& name();
 	template <typename... Args>
 	void add(const IAnyTypeParameter& parameter, Args... args)
 	{
@@ -191,6 +192,27 @@ private:
 	bool areAllInitialized();
 	std::string m_groupName;
 	std::map<std::string, std::unique_ptr<IAnyTypeParameter>> m_parameters;
+};
+
+class Parameters
+{
+public:
+	Parameters(const char* title = "Allowed options");
+
+	//void addGroup(ParametersGroup&& pg);
+	void addGroup(ParametersGroup& pg);
+
+	void parseCmdline(int argc, const char** argv);
+	void parseIni(const char* filename);
+
+	ParametersGroup& operator[](const std::string& groupName);
+
+private:
+	std::list<std::unique_ptr<ParametersGroup>> m_pgOwners;
+	std::map<std::string, ParametersGroup*> m_groups;
+	boost::program_options::options_description m_allOptions;
+	boost::program_options::variables_map m_vm;
+	boost::property_tree::ptree m_pt;
 };
 
 

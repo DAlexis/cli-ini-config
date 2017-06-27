@@ -2,7 +2,13 @@
 
 #include "gtest/gtest.h"
 
+#include <fstream>
+#include <cstdio>
+
 using namespace cic;
+using namespace std;
+
+const char testConfigFilename[] = "test-config.ini";
 
 TEST(Parameter, Instantiation)
 {
@@ -89,7 +95,7 @@ public:
 		);
 	}
 
-	ParametersGroup pg{"Parameters group for testing"};
+	ParametersGroup pg{"TestingParameters"};
 
 	bool pb = false;
 	int pi = 123;
@@ -99,7 +105,7 @@ public:
 
 };
 
-TEST_F(ParametersGroupIO, ParseConsole)
+TEST_F(ParametersGroupIO, ParseConsoleOnlyParameresGroup)
 {
 	namespace po = boost::program_options;
 	ASSERT_NO_THROW(fillNoDefaults());
@@ -131,4 +137,59 @@ TEST_F(ParametersGroupIO, ParseConsole)
 	EXPECT_EQ(pg.get<int>("int-parameter"), 321);
 	EXPECT_EQ(pg.get<double>("double-parameter"), -32.12);
 	EXPECT_EQ(pg.get<std::string>("string-parameter"), "hello");
+}
+
+TEST_F(ParametersGroupIO, ParseConsole)
+{
+	namespace po = boost::program_options;
+	ASSERT_NO_THROW(fillNoDefaults());
+	int argc = 5;
+	const char* argv[5];
+	argv[0] = "/tmp/test";
+	argv[1] = "--bool-parameter=false";
+	argv[2] = "--int-parameter=321";
+	argv[3] = "--double-parameter=-32.12";
+	argv[4] = "--string-parameter=hello";
+
+	Parameters p;
+	ASSERT_NO_THROW(p.addGroup(pg));
+	ASSERT_NO_THROW(p.parseCmdline(argc, argv));
+
+	EXPECT_EQ(p["TestingParameters"].get<bool>("bool-parameter"), false);
+	EXPECT_EQ(p["TestingParameters"].get<int>("int-parameter"), 321);
+	EXPECT_EQ(p["TestingParameters"].get<double>("double-parameter"), -32.12);
+	EXPECT_EQ(p["TestingParameters"].get<std::string>("string-parameter"), "hello");
+}
+
+TEST_F(ParametersGroupIO, ParseIni)
+{
+	fillNoDefaults();
+
+	const char iniFile[] =
+			"# Some strange parameters\n"
+			"[TestingParameters]\n"
+			"bool-parameter = true\n"
+			"int-parameter = 321\n"
+			"double-parameter = -3.12e10\n"
+			"string-parameter = hello\n"
+			;
+
+	ofstream f(testConfigFilename, ios::out);
+	ASSERT_TRUE(f.good()) << "Cannot create temporary file for resting ini parcer";
+
+	f << iniFile;
+	f.close();
+
+	struct Remover {
+		~Remover() { std::remove(testConfigFilename); }
+	} remover;
+
+	Parameters p;
+	ASSERT_NO_THROW(p.addGroup(pg));
+	ASSERT_NO_THROW(p.parseIni(testConfigFilename));
+
+	EXPECT_EQ(p["TestingParameters"].get<bool>("bool-parameter"), true);
+	EXPECT_EQ(p["TestingParameters"].get<int>("int-parameter"), 321);
+	EXPECT_EQ(p["TestingParameters"].get<double>("double-parameter"), -3.12e10);
+	EXPECT_EQ(p["TestingParameters"].get<std::string>("string-parameter"), "hello");
 }

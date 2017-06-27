@@ -1,11 +1,17 @@
 #include "cic.hpp"
 #include <iostream>
+#include <boost/property_tree/ini_parser.hpp>
 
 using namespace cic;
 
 ParametersGroup::ParametersGroup(const std::string& groupName) :
 		m_groupName(groupName)
 {
+}
+
+const std::string& ParametersGroup::name()
+{
+	return m_groupName;
 }
 
 void ParametersGroup::add(const IAnyTypeParameter& parameter)
@@ -70,4 +76,58 @@ bool ParametersGroup::areAllInitialized()
 	return true;
 }
 
+Parameters::Parameters(const char* title) :
+		m_allOptions(title)
+{
+}
 
+/*void Parameters::addGroup(ParametersGroup&& pg)
+{
+
+}*/
+
+void Parameters::addGroup(ParametersGroup& pg)
+{
+	m_groups[pg.name()] = &pg;
+	m_allOptions.add(pg.getOptionsDesctiption());
+}
+
+void Parameters::parseCmdline(int argc, const char** argv)
+{
+	namespace po = boost::program_options;
+	po::store(po::parse_command_line(argc, argv, m_allOptions), m_vm);
+	po::notify(m_vm);
+	for (auto it=m_groups.begin(); it!=m_groups.end(); it++)
+	{
+		it->second->readPOVarsMap(m_vm);
+	}
+}
+
+void Parameters::parseIni(const char* filename)
+{
+	try {
+		boost::property_tree::ini_parser::read_ini(filename, m_pt);
+	}
+	catch(boost::property_tree::ini_parser::ini_parser_error &exception)
+	{
+		throw std::runtime_error(std::string("Parsing error in ") + exception.filename()
+				+ ":" + std::to_string(exception.line()) + " - " + exception.message());
+	}
+	catch(boost::property_tree::ptree_error &exception)
+	{
+		throw std::runtime_error(std::string("Parsing error in ") + exception.what());
+	}
+	catch(...)
+	{
+		throw std::runtime_error("Unknown parsing error");
+	}
+	for (auto it=m_groups.begin(); it!=m_groups.end(); it++)
+	{
+		it->second->readPT(m_pt);
+	}
+}
+
+ParametersGroup& Parameters::operator[](const std::string& groupName)
+{
+	return *m_groups[groupName];
+}
