@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8)
 
-project(library-test)
+project(cic-test)
 
 find_package (GTest REQUIRED)
 

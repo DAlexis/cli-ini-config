@@ -4,8 +4,18 @@
 
 using namespace cic;
 
-ParametersGroup::ParametersGroup(const std::string& groupName) :
-		m_groupName(groupName)
+ParametersGroup::ParametersGroup(const char* groupName, const char* description) :
+		m_optionsDescr(description),
+		m_groupName(groupName),
+		m_description(description)
+{
+}
+
+ParametersGroup::ParametersGroup(ParametersGroup&& pg) :
+		m_optionsDescr(std::move(pg.m_optionsDescr)),
+		m_groupName(std::move(pg.m_groupName)),
+		m_description(std::move(pg.m_description)),
+		m_parameters(std::move(pg.m_parameters))
 {
 }
 
@@ -50,6 +60,12 @@ bool ParametersGroup::readPT(const boost::property_tree::ptree& pt)
 
 void ParametersGroup::writeIniItem(std::ostream& stream)
 {
+	if (!m_description.empty())
+	{
+		/// @todo Add # to every line in case of multiline
+		stream << "# " << m_description << std::endl;
+	}
+
 	stream << std::endl << "[" << m_groupName << "]" << std::endl;
 	for (auto &it : m_parameters)
 	{
@@ -81,10 +97,11 @@ Parameters::Parameters(const char* title) :
 {
 }
 
-/*void Parameters::addGroup(ParametersGroup&& pg)
+void Parameters::addGroup(ParametersGroup&& pg)
 {
-
-}*/
+	m_pgOwners.push_back(std::unique_ptr<ParametersGroup>(new ParametersGroup(std::move(pg))));
+	addGroup(*m_pgOwners.back());
+}
 
 void Parameters::addGroup(ParametersGroup& pg)
 {

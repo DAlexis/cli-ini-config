@@ -193,3 +193,85 @@ TEST_F(ParametersGroupIO, ParseIni)
 	EXPECT_EQ(p["TestingParameters"].get<double>("double-parameter"), -3.12e10);
 	EXPECT_EQ(p["TestingParameters"].get<std::string>("string-parameter"), "hello");
 }
+
+TEST(Parameters, RightRefAdding)
+{
+	ASSERT_NO_THROW(
+		ParametersGroup pg(
+			"TestingParameters",
+			Parameter<bool>("bool-parameter", "Boolean parameter"),
+			Parameter<int>("int-parameter", "Integer parameter")
+		)
+	);
+
+	Parameters p;
+	ASSERT_NO_THROW(
+		p.addGroup(
+			ParametersGroup(
+				"TestingParameters",
+				Parameter<bool>("bool-parameter", "Boolean parameter"),
+				Parameter<int>("int-parameter", "Integer parameter")
+			)
+		)
+	);
+
+	// Test for addGroup method
+	{
+		ParametersGroup pg(
+			"TestingParameters1",
+			Parameter<bool>("bool-parameter", "Boolean parameter"),
+			Parameter<int>("int-parameter", "Integer parameter")
+		);
+
+		Parameters p;
+		p.addGroup(
+			pg,
+			static_cast<ParametersGroup&&>(ParametersGroup(
+				"OtherGroup",
+				Parameter<bool>("bool-parameter", "Boolean parameter"),
+				Parameter<int>("int-parameter", "Integer parameter")
+			)),
+			static_cast<ParametersGroup&&>(ParametersGroup(
+				"OtherGroup2",
+				Parameter<bool>("bool-parameter", "Boolean parameter"),
+				Parameter<int>("int-parameter", "Integer parameter")
+			))
+		);
+	}
+}
+
+TEST(Parameters, ShortInitialization)
+{
+	int argc = 5;
+	const char* argv[5];
+	argv[0] = "/tmp/test";
+	argv[1] = "--bool-parameter=false";
+	argv[2] = "--int-parameter=321";
+	argv[3] = "--double-parameter=-32.12";
+	argv[4] = "--string-parameter=hello";
+
+
+	Parameters p(
+		"All parameters for your program",
+		ParametersGroup(
+			"Group1",
+			"Here is a sample group 1",
+			Parameter<bool>("bool-parameter", "Boolean parameter"),
+			Parameter<int>("int-parameter", "Integer parameter")
+		),
+		ParametersGroup(
+			"Group2",
+			"Here is a sample group 3",
+			Parameter<double>("double-parameter", "Double parameter", 1.23),
+			Parameter<std::string>("string-parameter", "String parameter", "lol wut")
+		)
+	);
+
+
+	ASSERT_NO_THROW(p.parseCmdline(argc, argv));
+
+	EXPECT_EQ(p["Group1"].get<bool>("bool-parameter"), false);
+	EXPECT_EQ(p["Group1"].get<int>("int-parameter"), 321);
+	EXPECT_EQ(p["Group2"].get<double>("double-parameter"), -32.12);
+	EXPECT_EQ(p["Group2"].get<std::string>("string-parameter"), "hello");
+}

@@ -82,15 +82,6 @@ struct Parameter : public IAnyTypeParameter
 	{
 		return StringTool<T>::to_string(m_value);
 	}
-/*
-	Parameter& operator=(const Parameter& right)
-	{
-		m_isInitialized = right.m_isInitialized;
-		m_value = right.m_value;
-		m_name = right.m_name;
-		m_description = right.m_description;
-		return *this;
-	}*/
 
 	void addToPO(boost::program_options::options_description& od) const override
 	{
@@ -131,15 +122,9 @@ struct Parameter : public IAnyTypeParameter
 		stream << m_name << " = " << m_value << std::endl;
 	}
 
-	bool initialized() const override
-	{
-		return m_isInitialized;
-	}
+	bool initialized() const override {	return m_isInitialized; }
 
-	bool setByUser() const override
-	{
-		return m_setByUser;
-	}
+	bool setByUser() const override { return m_setByUser; }
 
 	virtual IAnyTypeParameter* copy() const override
 	{
@@ -158,8 +143,27 @@ private:
 class ParametersGroup
 {
 public:
-	ParametersGroup(const std::string& groupName);
+	ParametersGroup(const char* groupName, const char* description = "");
+
+	template <typename... Args>
+	ParametersGroup(const char* groupName, const char* description, Args... args) :
+		m_optionsDescr(description),
+		m_groupName(groupName),
+		m_description(description)
+	{
+		add(args...);
+	}
+
+	template <typename... Args>
+	ParametersGroup(const char* groupName, Args... args) :
+		m_groupName(groupName)
+	{
+		add(args...);
+	}
+
+	ParametersGroup(ParametersGroup&& pg);
 	const std::string& name();
+
 	template <typename... Args>
 	void add(const IAnyTypeParameter& parameter, Args... args)
 	{
@@ -191,6 +195,7 @@ private:
 
 	bool areAllInitialized();
 	std::string m_groupName;
+	std::string m_description;
 	std::map<std::string, std::unique_ptr<IAnyTypeParameter>> m_parameters;
 };
 
@@ -199,11 +204,34 @@ class Parameters
 public:
 	Parameters(const char* title = "Allowed options");
 
-	//void addGroup(ParametersGroup&& pg);
+	template <typename... Args>
+	Parameters(const char* title, Args&&... args) :
+		m_allOptions(title)
+	{
+		addGroup(std::forward<Args>(args)...);
+	}
+
+	template <typename... Args>
+	void addGroup(ParametersGroup&& parameter, Args&&... args)
+	{
+		addGroup(std::move(parameter));
+		addGroup(std::forward<Args>(args)...);
+	}
+
+	template <typename... Args>
+	void addGroup(ParametersGroup& parameter, Args&&... args)
+	{
+		addGroup(parameter);
+		addGroup(std::forward<Args>(args)...);
+	}
+
+	void addGroup(ParametersGroup&& pg);
 	void addGroup(ParametersGroup& pg);
 
 	void parseCmdline(int argc, const char** argv);
 	void parseIni(const char* filename);
+
+	void cmdlineHelp(std::ostream& stream);
 
 	ParametersGroup& operator[](const std::string& groupName);
 
