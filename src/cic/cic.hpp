@@ -24,6 +24,14 @@
 
 namespace cic {
 
+enum class ParamterType
+{
+	//disabled = 0,
+	iniFile = 1,
+	cmdLine = 2,
+	both    = iniFile | cmdLine
+};
+
 class IAnyTypeParameter
 {
 public:
@@ -46,29 +54,20 @@ public:
 template <typename T>
 struct Parameter : public IAnyTypeParameter
 {
-	Parameter(const Parameter& p)
-	{
-		*this = p;
-	}
-
-	Parameter(const char* name, const char* description, T initValue) :
+	Parameter(const char* name, const char* description, T initValue, ParamterType pt = ParamterType::both) :
 		m_value(initValue),
 		m_name(name),
 		m_description(description),
-		m_isInitialized(true)
+		m_isInitialized(true),
+		m_parType(pt)
 	{ }
 
-	Parameter(const char* name, const char* description) :
+	Parameter(const char* name, const char* description, ParamterType pt = ParamterType::both) :
 		m_name(name),
 		m_description(description),
-		m_isInitialized(false)
+		m_isInitialized(false),
+		m_parType(pt)
 	{ }
-
-	T operator=(T newValue)
-	{
-		m_isInitialized = true;
-		return m_value = newValue;
-	}
 
 	T& get()
 	{
@@ -83,34 +82,20 @@ struct Parameter : public IAnyTypeParameter
 		return StringTool<T>::to_string(m_value);
 	}
 
-	void addToPO(boost::program_options::options_description& od) const override
-	{
-		if (m_isInitialized)
-			od.add_options()
-				(m_name.c_str(), boost::program_options::value<T>()->default_value(m_value), "Description");
-		else
-			od.add_options()
-				(m_name.c_str(), boost::program_options::value<T>(), "Description");
-	}
+	void addToPO(boost::program_options::options_description& od) const override;
 
-	bool getFromPO(const boost::program_options::variables_map& clOpts) override
-	{
-		if (clOpts.count(m_name.c_str()) != 0)
-		{
-			m_value = clOpts[m_name.c_str()].as<T>();
-			m_setByUser = true;
-			m_isInitialized = true;
-		}
-		return initialized();
-	}
+	bool getFromPO(const boost::program_options::variables_map& clOpts) override;
 
 	bool getFromPT(const boost::property_tree::ptree& pt)
 	{
-		if (pt.count(m_name.c_str()) != 0)
+		if (m_parType == ParamterType::iniFile || m_parType == ParamterType::both)
 		{
-			m_value = pt.get<T>(m_name.c_str());
-			m_setByUser = true;
-			m_isInitialized = true;
+			if (pt.count(m_name.c_str()) != 0)
+			{
+				m_value = pt.get<T>(m_name.c_str());
+				m_setByUser = true;
+				m_isInitialized = true;
+			}
 		}
 
 		return initialized();
@@ -118,8 +103,14 @@ struct Parameter : public IAnyTypeParameter
 
 	void writeIniItem(std::ostream& stream) override
 	{
+		if (m_parType != ParamterType::iniFile && m_parType != ParamterType::both)
+			return;
 		stream << "# " << m_description << std::endl;
-		stream << m_name << " = " << m_value << std::endl;
+		stream << m_name << " = ";
+		if (m_isInitialized)
+			stream << m_value << std::endl;
+		else
+			stream << "<value>" << std::endl;
 	}
 
 	bool initialized() const override {	return m_isInitialized; }
@@ -138,7 +129,39 @@ private:
 	std::string m_description;
 	bool m_isInitialized;
 	bool m_setByUser = false;
+	ParamterType m_parType = ParamterType::both;
 };
+
+template<typename T>
+void Parameter<T>::addToPO(boost::program_options::options_description& od) const
+{
+	if (m_parType == ParamterType::cmdLine || m_parType == ParamterType::both)
+	{
+		od.add_options()
+			(m_name.c_str(), boost::program_options::value<T>(), m_description.c_str());
+	}
+}
+
+template<typename T>
+bool Parameter<T>::getFromPO(const boost::program_options::variables_map& clOpts)
+{
+	if (m_parType == ParamterType::cmdLine || m_parType == ParamterType::both)
+	{
+		if (clOpts.count(m_name.c_str()) != 0)
+		{
+			m_value = clOpts[m_name.c_str()].as<T>();
+			m_setByUser = true;
+			m_isInitialized = true;
+		}
+	}
+	return initialized();
+}
+
+template<>
+void Parameter<bool>::addToPO(boost::program_options::options_description& od) const;
+
+template<>
+bool Parameter<bool>::getFromPO(const boost::program_options::variables_map& clOpts);
 
 class ParametersGroup
 {
@@ -230,8 +253,13 @@ public:
 
 	void parseCmdline(int argc, const char** argv);
 	void parseIni(const char* filename);
+	void parseIni(const std::vector<std::string>& variants, const std::string& suffix = "");
 
 	void cmdlineHelp(std::ostream& stream);
+	void writeIni(std::ostream& stream);
+
+	const boost::program_options::variables_map& variablesMap();
+	const boost::property_tree::ptree& propertyTree();
 
 	ParametersGroup& operator[](const std::string& groupName);
 
@@ -243,10 +271,14 @@ private:
 	boost::property_tree::ptree m_pt;
 };
 
+class SystemUtils
+{
+public:
+	static std::string homeDir();
+	static std::string replaceTilta(const std::string& source);
+	static std::string probeFiles(const std::vector<std::string>& variants, const std::string& suffix = "");
+};
 
 } // namespace cic
-
-void func();
-double sqr(double x);
 
 #endif // LIBHEADER_INCLUDED

@@ -3,12 +3,51 @@
 #include "gtest/gtest.h"
 
 #include <fstream>
+#include <sstream>
 #include <cstdio>
 
 using namespace cic;
 using namespace std;
 
 const char testConfigFilename[] = "test-config.ini";
+
+bool createTestIniFile()
+{
+	const char iniFile[] =
+		"# Some strange parameters\n"
+		"[TestingParameters]\n"
+		"bool-parameter = true\n"
+		"int-parameter = 321\n"
+		"double-parameter = -3.12e10\n"
+		"string-parameter = hello\n"
+		"[Group1]\n"
+		"bool-parameter = false\n"
+		"int-parameter = 1\n"
+		"double-parameter = -4.2e10\n"
+		"string-parameter = bye\n"
+		"[Group2]\n"
+		"bool-parameter = true\n"
+		"int-parameter = 2\n"
+		"double-parameter = 1309.1\n"
+		"string-parameter = lol\n"
+		;
+
+	ofstream f(testConfigFilename, ios::out);
+	if (!f.good())
+		return false;
+
+	f << iniFile;
+	return true;
+}
+
+void removeTestIniFile()
+{
+	std::remove(testConfigFilename);
+}
+
+struct Remover {
+	~Remover() { removeTestIniFile(); }
+};
 
 TEST(Parameter, Instantiation)
 {
@@ -112,7 +151,7 @@ TEST_F(ParametersGroupIO, ParseConsoleOnlyParameresGroup)
 	int argc = 5;
 	const char* argv[5];
 	argv[0] = "/tmp/test";
-	argv[1] = "--bool-parameter=false";
+	argv[1] = "--bool-parameter";
 	argv[2] = "--int-parameter=321";
 	argv[3] = "--double-parameter=-32.12";
 	argv[4] = "--string-parameter=hello";
@@ -133,7 +172,7 @@ TEST_F(ParametersGroupIO, ParseConsoleOnlyParameresGroup)
 	EXPECT_TRUE(pg.getInterface("double-parameter").initialized());
 	EXPECT_TRUE(pg.getInterface("string-parameter").initialized());
 
-	EXPECT_EQ(pg.get<bool>("bool-parameter"), false);
+	EXPECT_EQ(pg.get<bool>("bool-parameter"), true);
 	EXPECT_EQ(pg.get<int>("int-parameter"), 321);
 	EXPECT_EQ(pg.get<double>("double-parameter"), -32.12);
 	EXPECT_EQ(pg.get<std::string>("string-parameter"), "hello");
@@ -146,7 +185,7 @@ TEST_F(ParametersGroupIO, ParseConsole)
 	int argc = 5;
 	const char* argv[5];
 	argv[0] = "/tmp/test";
-	argv[1] = "--bool-parameter=false";
+	argv[1] = "--bool-parameter";
 	argv[2] = "--int-parameter=321";
 	argv[3] = "--double-parameter=-32.12";
 	argv[4] = "--string-parameter=hello";
@@ -155,7 +194,7 @@ TEST_F(ParametersGroupIO, ParseConsole)
 	ASSERT_NO_THROW(p.addGroup(pg));
 	ASSERT_NO_THROW(p.parseCmdline(argc, argv));
 
-	EXPECT_EQ(p["TestingParameters"].get<bool>("bool-parameter"), false);
+	EXPECT_EQ(p["TestingParameters"].get<bool>("bool-parameter"), true);
 	EXPECT_EQ(p["TestingParameters"].get<int>("int-parameter"), 321);
 	EXPECT_EQ(p["TestingParameters"].get<double>("double-parameter"), -32.12);
 	EXPECT_EQ(p["TestingParameters"].get<std::string>("string-parameter"), "hello");
@@ -165,24 +204,8 @@ TEST_F(ParametersGroupIO, ParseIni)
 {
 	fillNoDefaults();
 
-	const char iniFile[] =
-			"# Some strange parameters\n"
-			"[TestingParameters]\n"
-			"bool-parameter = true\n"
-			"int-parameter = 321\n"
-			"double-parameter = -3.12e10\n"
-			"string-parameter = hello\n"
-			;
-
-	ofstream f(testConfigFilename, ios::out);
-	ASSERT_TRUE(f.good()) << "Cannot create temporary file for resting ini parcer";
-
-	f << iniFile;
-	f.close();
-
-	struct Remover {
-		~Remover() { std::remove(testConfigFilename); }
-	} remover;
+	ASSERT_TRUE(createTestIniFile()) << "Cannot create test ini file";
+	Remover r;
 
 	Parameters p;
 	ASSERT_NO_THROW(p.addGroup(pg));
@@ -240,18 +263,10 @@ TEST(Parameters, RightRefAdding)
 	}
 }
 
-TEST(Parameters, ShortInitialization)
+class ParametersShortInit : public ::testing::Test
 {
-	int argc = 5;
-	const char* argv[5];
-	argv[0] = "/tmp/test";
-	argv[1] = "--bool-parameter=false";
-	argv[2] = "--int-parameter=321";
-	argv[3] = "--double-parameter=-32.12";
-	argv[4] = "--string-parameter=hello";
-
-
-	Parameters p(
+public:
+	Parameters p{
 		"All parameters for your program",
 		ParametersGroup(
 			"Group1",
@@ -261,17 +276,82 @@ TEST(Parameters, ShortInitialization)
 		),
 		ParametersGroup(
 			"Group2",
-			"Here is a sample group 3",
+			//"Here is a sample group 2", // I don't want the description
 			Parameter<double>("double-parameter", "Double parameter", 1.23),
-			Parameter<std::string>("string-parameter", "String parameter", "lol wut")
+			Parameter<std::string>("string-parameter", "String parameter", "lol wut2")
+		),
+		ParametersGroup(
+			"Group3",
+			"Another sample group",
+			Parameter<std::string>("string-parameter-with-other-default", "String parameter", "wut lol")
 		)
-	);
+	};
+};
 
+TEST_F(ParametersShortInit, Cmdline)
+{
+	int argc = 5;
+	const char* argv[5];
+	argv[0] = "/tmp/test";
+	argv[1] = "--bool-parameter";
+	argv[2] = "--int-parameter=321";
+	argv[3] = "--double-parameter=-32.12";
+	argv[4] = "--string-parameter=hello";
 
 	ASSERT_NO_THROW(p.parseCmdline(argc, argv));
 
-	EXPECT_EQ(p["Group1"].get<bool>("bool-parameter"), false);
+	EXPECT_EQ(p["Group1"].get<bool>("bool-parameter"), true);
 	EXPECT_EQ(p["Group1"].get<int>("int-parameter"), 321);
 	EXPECT_EQ(p["Group2"].get<double>("double-parameter"), -32.12);
 	EXPECT_EQ(p["Group2"].get<std::string>("string-parameter"), "hello");
 }
+
+TEST_F(ParametersShortInit, IniFile)
+{
+	ASSERT_TRUE(createTestIniFile()) << "Cannot create test ini file";
+	Remover r;
+
+	ASSERT_NO_THROW(p.parseIni(testConfigFilename));
+
+	EXPECT_EQ(p["Group1"].get<bool>("bool-parameter"), false);
+	EXPECT_EQ(p["Group1"].get<int>("int-parameter"), 1);
+	EXPECT_EQ(p["Group2"].get<double>("double-parameter"), 1309.1);
+	EXPECT_EQ(p["Group2"].get<std::string>("string-parameter"), "lol");
+}
+
+TEST_F(ParametersShortInit, CmdlineOverridesIni)
+{
+	ASSERT_TRUE(createTestIniFile()) << "Cannot create test ini file";
+	Remover r;
+
+	constexpr int argc = 4;
+	const char* argv[argc];
+	argv[0] = "/tmp/test";
+	argv[1] = "--bool-parameter";
+	argv[2] = "--int-parameter=321";
+	argv[3] = "--double-parameter=-32.12";
+
+	ASSERT_NO_THROW(p.parseIni(testConfigFilename));
+	ASSERT_NO_THROW(p.parseCmdline(argc, argv));
+
+	EXPECT_EQ(p["Group1"].get<bool>("bool-parameter"), true);
+	EXPECT_EQ(p["Group1"].get<int>("int-parameter"), 321);
+	EXPECT_EQ(p["Group2"].get<double>("double-parameter"), -32.12);
+	EXPECT_EQ(p["Group2"].get<std::string>("string-parameter"), "lol");
+}
+
+TEST_F(ParametersShortInit, TextGeneration)
+{
+	{
+		std::ostringstream oss;
+		ASSERT_NO_THROW(p.cmdlineHelp(oss));
+		//ASSERT_NO_THROW(p.cmdlineHelp(std::cout));
+	}
+	{
+		std::ostringstream oss;
+		ASSERT_NO_THROW(p.writeIni(oss));
+		//ASSERT_NO_THROW(p.writeIni(std::cout));
+	}
+}
+
+/// @todo tests for

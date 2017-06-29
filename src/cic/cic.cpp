@@ -1,8 +1,43 @@
 #include "cic.hpp"
-#include <iostream>
+
+#include <boost/filesystem.hpp>
 #include <boost/property_tree/ini_parser.hpp>
+#include <iostream>
+#include <fstream>
+
+#include <sys/types.h>
+#include <pwd.h>
 
 using namespace cic;
+
+template<>
+void Parameter<bool>::addToPO(boost::program_options::options_description& od) const
+{
+	if (m_parType == ParamterType::cmdLine || m_parType == ParamterType::both)
+	{
+		od.add_options()
+			(m_name.c_str(), m_description.c_str());
+	}
+}
+
+template<>
+bool Parameter<bool>::getFromPO(const boost::program_options::variables_map& clOpts)
+{
+	if (m_parType == ParamterType::cmdLine || m_parType == ParamterType::both)
+	{
+		if (clOpts.count(m_name.c_str()) != 0)
+		{
+			try {
+				m_value = clOpts[m_name.c_str()].as<bool>();
+			} catch (std::exception &) {
+				m_value = true;
+			}
+			m_setByUser = true;
+			m_isInitialized = true;
+		}
+	}
+	return initialized();
+}
 
 ParametersGroup::ParametersGroup(const char* groupName, const char* description) :
 		m_optionsDescr(description),
@@ -112,8 +147,16 @@ void Parameters::addGroup(ParametersGroup& pg)
 void Parameters::parseCmdline(int argc, const char** argv)
 {
 	namespace po = boost::program_options;
-	po::store(po::parse_command_line(argc, argv, m_allOptions), m_vm);
-	po::notify(m_vm);
+	try
+	{
+		po::store(po::parse_command_line(argc, argv, m_allOptions), m_vm);
+		po::notify(m_vm);
+	}
+	catch (po::error& e)
+	{
+		throw (std::runtime_error(std::string("Command line parsing error: ") + e.what()));
+	}
+
 	for (auto it=m_groups.begin(); it!=m_groups.end(); it++)
 	{
 		it->second->readPOVarsMap(m_vm);
@@ -122,8 +165,9 @@ void Parameters::parseCmdline(int argc, const char** argv)
 
 void Parameters::parseIni(const char* filename)
 {
+	std::string fname = SystemUtils::replaceTilta(filename);
 	try {
-		boost::property_tree::ini_parser::read_ini(filename, m_pt);
+		boost::property_tree::ini_parser::read_ini(fname.c_str(), m_pt);
 	}
 	catch(boost::property_tree::ini_parser::ini_parser_error &exception)
 	{
@@ -144,7 +188,73 @@ void Parameters::parseIni(const char* filename)
 	}
 }
 
+void Parameters::parseIni(const std::vector<std::string>& variants, const std::string& suffix)
+{
+	std::string filename = SystemUtils::probeFiles(variants, suffix);
+	if (filename == "")
+		throw std::runtime_error("Cannot file configuration file");
+
+	parseIni(filename.c_str());
+}
+
+void Parameters::cmdlineHelp(std::ostream& stream)
+{
+	stream << m_allOptions;
+}
+
+void Parameters::writeIni(std::ostream& stream)
+{
+	for (auto it=m_groups.begin(); it != m_groups.end(); it++)
+	{
+		it->second->writeIniItem(stream);
+	}
+}
+
+const boost::program_options::variables_map& Parameters::variablesMap()
+{
+	return m_vm;
+}
+
+const boost::property_tree::ptree& Parameters::propertyTree()
+{
+	return m_pt;
+}
+
 ParametersGroup& Parameters::operator[](const std::string& groupName)
 {
 	return *m_groups[groupName];
+}
+
+std::string SystemUtils::homeDir()
+{
+	const char *homedir;
+
+	if ((homedir = getenv("HOME")) == NULL) {
+	    homedir = getpwuid(getuid())->pw_dir;
+	}
+	return std::string(homedir);
+}
+
+std::string SystemUtils::replaceTilta(const std::string& source)
+{
+	std::string result = source;
+	size_t pos = result.find(std::string("~"));
+	if (pos != result.npos)
+		result.replace(pos, 1, homeDir());
+
+	return result;
+}
+
+std::string SystemUtils::probeFiles(const std::vector<std::string>& variants, const std::string& suffix)
+{
+	for (auto& it : variants)
+	{
+		std::string fullName = it + suffix;
+
+		if (boost::filesystem::exists(fullName))
+		{
+			return fullName;
+		}
+	}
+	return "";
 }

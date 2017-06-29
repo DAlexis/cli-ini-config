@@ -2,8 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 
 project(cic)
 
-find_package (Boost COMPONENTS date_time program_options REQUIRED)
-find_package (Boost COMPONENTS filesystem REQUIRED)
+find_package (Boost COMPONENTS date_time program_options system filesystem REQUIRED)
 
 set(LIB_SOURCE
     cic.cpp
@@ -28,6 +27,5 @@ export_include_dirs(
 
 export_libs(
     ${PROJECT_NAME}
-    ${Boost_PROGRAM_OPTIONS_LIBRARY}
-    ${Boost_FILESYSTEM_LIBRARY}
+    ${Boost_LIBRARIES}
 )

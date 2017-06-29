@@ -37,6 +37,7 @@ macro(export_libs)
 endmacro()
 
 add_subdirectory(cic)
+add_subdirectory(example)
 # To enable ctest usage
 enable_testing()
 
