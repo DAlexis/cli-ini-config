@@ -39,6 +39,13 @@ bool Parameter<bool>::getFromPO(const boost::program_options::variables_map& clO
 	return initialized();
 }
 
+template<>
+void Parameter<bool>::initNoDefault()
+{
+	m_value = false;
+	m_isInitialized = true;
+}
+
 ParametersGroup::ParametersGroup(const char* groupName, const char* description) :
 		m_optionsDescr(description),
 		m_groupName(groupName),
@@ -144,8 +151,9 @@ void Parameters::addGroup(ParametersGroup& pg)
 	m_allOptions.add(pg.getOptionsDesctiption());
 }
 
-void Parameters::parseCmdline(int argc, const char** argv)
+void Parameters::parseCmdline(int argc, const char* const * argv)
 {
+	m_vm.clear();
 	namespace po = boost::program_options;
 	try
 	{
@@ -208,6 +216,12 @@ void Parameters::writeIni(std::ostream& stream)
 	{
 		it->second->writeIniItem(stream);
 	}
+}
+
+void Parameters::writeIni(const char* filename)
+{
+	std::ofstream iniFile(filename, std::ios::out);
+	writeIni(iniFile);
 }
 
 const boost::program_options::variables_map& Parameters::variablesMap()

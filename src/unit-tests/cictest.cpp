@@ -15,16 +15,20 @@ bool createTestIniFile()
 {
 	const char iniFile[] =
 		"# Some strange parameters\n"
+		"# Not all used by every test\n"
+
 		"[TestingParameters]\n"
 		"bool-parameter = true\n"
 		"int-parameter = 321\n"
 		"double-parameter = -3.12e10\n"
 		"string-parameter = hello\n"
+
 		"[Group1]\n"
 		"bool-parameter = false\n"
 		"int-parameter = 1\n"
 		"double-parameter = -4.2e10\n"
 		"string-parameter = bye\n"
+
 		"[Group2]\n"
 		"bool-parameter = true\n"
 		"int-parameter = 2\n"
@@ -156,7 +160,7 @@ TEST_F(ParametersGroupIO, ParseConsoleOnlyParameresGroup)
 	argv[3] = "--double-parameter=-32.12";
 	argv[4] = "--string-parameter=hello";
 
-	ASSERT_FALSE(pg.getInterface("bool-parameter").initialized());
+	ASSERT_TRUE(pg.getInterface("bool-parameter").initialized());
 	ASSERT_FALSE(pg.getInterface("int-parameter").initialized());
 	ASSERT_FALSE(pg.getInterface("double-parameter").initialized());
 	ASSERT_FALSE(pg.getInterface("string-parameter").initialized());
@@ -345,13 +349,64 @@ TEST_F(ParametersShortInit, TextGeneration)
 	{
 		std::ostringstream oss;
 		ASSERT_NO_THROW(p.cmdlineHelp(oss));
+		ASSERT_FALSE(oss.str().empty());
 		//ASSERT_NO_THROW(p.cmdlineHelp(std::cout));
 	}
 	{
 		std::ostringstream oss;
 		ASSERT_NO_THROW(p.writeIni(oss));
+		ASSERT_FALSE(oss.str().empty());
 		//ASSERT_NO_THROW(p.writeIni(std::cout));
 	}
 }
 
-/// @todo tests for
+TEST(ParametersOptions, ParameterType)
+{
+	ASSERT_TRUE(createTestIniFile()) << "Cannot create test ini file";
+	Remover r;
+
+	Parameters p(
+		"All parameters for your program",
+		ParametersGroup(
+			"Group1",
+			Parameter<bool>("bool-parameter", "Boolean parameter"),
+			Parameter<int>("int-parameter", "Integer parameter", ParamterType::iniFile)
+		),
+		ParametersGroup(
+			"Group2",
+			Parameter<double>("double-parameter", "Double parameter", 1.23, ParamterType::cmdLine),
+			Parameter<std::string>("string-parameter", "String parameter", ParamterType::both)
+		)
+	);
+
+	constexpr int argc = 4;
+	const char* argv[argc];
+	argv[0] = "/tmp/test";
+	argv[1] = "--string-parameter=wut";
+	argv[2] = "--bool-parameter";
+	argv[3] = "--double-parameter=-32.12";
+
+	EXPECT_EQ(p["Group2"].get<double>("double-parameter"), 1.23);
+
+	ASSERT_NO_THROW(p.parseIni(testConfigFilename));
+
+	// All whould be according ini file
+	EXPECT_EQ(p["Group1"].get<int>("int-parameter"), 1);
+	EXPECT_EQ(p["Group2"].get<std::string>("string-parameter"), "lol");
+
+	ASSERT_NO_THROW(p.parseCmdline(argc, argv));
+
+	EXPECT_EQ(p["Group1"].get<int>("int-parameter"), 1);
+	EXPECT_EQ(p["Group2"].get<double>("double-parameter"), -32.12); // As in console
+	EXPECT_EQ(p["Group2"].get<std::string>("string-parameter"), "wut"); // Changed
+
+	ASSERT_NO_THROW(p.parseIni(testConfigFilename));
+
+	EXPECT_EQ(p["Group1"].get<int>("int-parameter"), 1);
+	EXPECT_EQ(p["Group2"].get<double>("double-parameter"), -32.12); // Not changed
+	EXPECT_EQ(p["Group2"].get<std::string>("string-parameter"), "lol"); // Changed
+
+	argv[1] = "--int-parameter=45";
+	ASSERT_ANY_THROW(p.parseCmdline(argc, argv)) << "Non-cmdline parameter should throw an exception when found in cmdline";
+}
+

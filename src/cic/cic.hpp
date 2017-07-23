@@ -1,3 +1,12 @@
+/**
+ * cli-ini-config library developed to maximally simplify
+ * work with command line and ini-files options at the
+ * same time
+ *
+ * @todo: Boolean parameters support in form --bool-parameter=false
+ * @todo: Collision support for same parameters in different groups
+ */
+
 #ifndef LIBHEADER_INCLUDED
 #define LIBHEADER_INCLUDED
 
@@ -12,15 +21,7 @@
 
 #include <initializer_list>
 
-#ifndef DEBUG
-	#define DEBUG
-#endif
-
-#ifdef DEBUG
-    #define CIC_ASSERT(condition, message) if (not (condition)) throw std::runtime_error(std::string((message)));
-#else
-    #define CIC_ASSERT(condition, message)
-#endif
+#define CIC_ASSERT(condition, message) if (not (condition)) throw std::runtime_error(std::string((message)));
 
 namespace cic {
 
@@ -67,7 +68,9 @@ struct Parameter : public IAnyTypeParameter
 		m_description(description),
 		m_isInitialized(false),
 		m_parType(pt)
-	{ }
+	{
+		initNoDefault();
+	}
 
 	T& get()
 	{
@@ -124,6 +127,9 @@ struct Parameter : public IAnyTypeParameter
 	}
 
 private:
+	/// Function to be easy overrided for bool parameter
+	void initNoDefault();
+
 	T m_value;
 	std::string m_name;
 	std::string m_description;
@@ -157,11 +163,17 @@ bool Parameter<T>::getFromPO(const boost::program_options::variables_map& clOpts
 	return initialized();
 }
 
+template<typename T>
+void Parameter<T>::initNoDefault() { }
+
 template<>
 void Parameter<bool>::addToPO(boost::program_options::options_description& od) const;
 
 template<>
 bool Parameter<bool>::getFromPO(const boost::program_options::variables_map& clOpts);
+
+template<>
+void Parameter<bool>::initNoDefault();
 
 class ParametersGroup
 {
@@ -213,6 +225,11 @@ public:
 		return dynamic_cast<Parameter<T>&>(getInterface(name)).get();
 	}
 
+	bool initialized(const std::string& name)
+	{
+		return getInterface(name).initialized();
+	}
+
 private:
 	boost::program_options::options_description m_optionsDescr;
 
@@ -251,12 +268,13 @@ public:
 	void addGroup(ParametersGroup&& pg);
 	void addGroup(ParametersGroup& pg);
 
-	void parseCmdline(int argc, const char** argv);
+	void parseCmdline(int argc, const char * const * argv);
 	void parseIni(const char* filename);
 	void parseIni(const std::vector<std::string>& variants, const std::string& suffix = "");
 
 	void cmdlineHelp(std::ostream& stream);
 	void writeIni(std::ostream& stream);
+	void writeIni(const char* filename);
 
 	const boost::program_options::variables_map& variablesMap();
 	const boost::property_tree::ptree& propertyTree();
