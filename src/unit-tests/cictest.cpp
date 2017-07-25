@@ -464,3 +464,42 @@ TEST(ParametersOptions, ParameterType)
 	ASSERT_ANY_THROW(p.parseCmdline(argc, argv)) << "Non-cmdline parameter should throw an exception when found in cmdline";
 }
 
+TEST(ParametersCollision, ConsoleGrouping)
+{
+	Parameters p(
+		"All parameters for your program",
+		ParametersGroup(
+			"Group1",
+			Parameter<bool>("bool-parameter", "Boolean parameter"),
+			Parameter<int>("int-parameter", "Integer parameter")
+		),
+		ParametersGroup(
+			"Group2",
+			Parameter<bool>("bool-parameter", "Boolean parameter"),
+			Parameter<int>("int-parameter", "Integer parameter")
+		),
+		ParametersGroup(
+			"Group3",
+			Parameter<bool>("bool-parameter", "Boolean parameter"),
+			Parameter<int>("int-parameter", "Integer parameter")
+		)
+	);
+
+	constexpr int argc = 4;
+	const char* argv[argc];
+	argv[0] = "/tmp/test";
+	argv[1] = "--Group2.bool-parameter";
+	argv[2] = "--Group1.int-parameter=1";
+	argv[3] = "--Group2.int-parameter=2";
+
+	(p.parseCmdline(argc, argv, true));
+
+	EXPECT_EQ(p["Group1"].get<bool>("bool-parameter"), false);
+	EXPECT_EQ(p["Group2"].get<bool>("bool-parameter"), true);
+
+	EXPECT_EQ(p["Group1"].get<int>("int-parameter"), 1);
+	EXPECT_EQ(p["Group2"].get<int>("int-parameter"), 2);
+
+	//EXPECT_FALSE(p["Group3"].getInterface("bool-parameter").initialized());
+	EXPECT_FALSE(p["Group3"].getInterface("int-parameter").initialized());
+}

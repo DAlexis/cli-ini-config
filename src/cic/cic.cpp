@@ -266,9 +266,17 @@ const boost::property_tree::ptree& Parameters::propertyTree()
 	return m_pt;
 }
 
+ParametersGroup* Parameters::group(const std::string& groupName)
+{
+	auto it = m_groups.find(groupName);
+	if (it == m_groups.end())
+		return nullptr;
+	return it->second;
+}
+
 ParametersGroup& Parameters::operator[](const std::string& groupName)
 {
-	return *m_groups[groupName];
+	return *group(groupName);
 }
 
 void Parameters::rebuildOptionsDescriptions(bool defaultsNeeded)
@@ -285,6 +293,66 @@ void Parameters::rebuildOptionsDescriptions(bool defaultsNeeded)
 		m_clOptionsBoth->add(it.second->getOptionsDesctiption(true, defaultsNeeded));
 	}
 }
+
+void PreconfiguredOperations::addGeneralOptions(Parameters& p, const std::string& group, bool help, bool saveIni, bool loadIni)
+{
+	ParametersGroup* g = p.group(group);
+	if (g == nullptr)
+	{
+		p.addGroup(ParametersGroup(group.c_str()));
+		g = p.group(group);
+	}
+	if (help)
+		g->add(Parameter<bool>("help", "Print help", ParamterType::cmdLine));
+	if (saveIni)
+		g->add(Parameter<std::string>("ini-save", "Save setting to ini file", ParamterType::cmdLine));
+	if (loadIni)
+		g->add(Parameter<std::string>("ini-load", "Load setting from ini file", ParamterType::cmdLine));
+}
+
+bool PreconfiguredOperations::quickReadConfiguration(
+		Parameters& p,
+		const std::vector<std::string>& configFiles,
+		int argc, const char * const * argv,
+		const std::string& group
+)
+{
+	// Reading command line to detect help and ini options
+	p.parseCmdline(argc, argv, true, true);
+	if (p[group.c_str()].get<bool>("help"))
+	{
+		p[group.c_str()].getInterface("help").markNotInitialized();
+		p.cmdlineHelp(std::cout, true);
+		return false;
+	}
+
+	// Reading first from configuration files
+	for (auto it = configFiles.begin(); it != configFiles.end(); ++it)
+	{
+		if (!SystemUtils::probeFile(SystemUtils::replaceTilta(*it)))
+			continue;
+
+		p.parseIni(it->c_str());
+	}
+
+	auto &g = p[group.c_str()];
+
+	// Reading last ini file from cmdline
+	if (g.initialized("ini-load"))
+	{
+		p.parseIni(g.get<std::string>("ini-load").c_str());
+	}
+
+	// Reading than command line
+	p.parseCmdline(argc, argv, true, true);
+
+	if (g.initialized("ini-save"))
+	{
+		p.writeIni(g.get<std::string>("ini-save").c_str());
+	}
+	return true;
+}
+
 
 std::string SystemUtils::homeDir()
 {
@@ -304,6 +372,11 @@ std::string SystemUtils::replaceTilta(const std::string& source)
 		result.replace(pos, 1, homeDir());
 
 	return result;
+}
+
+bool SystemUtils::probeFile(const std::string& file)
+{
+	return boost::filesystem::exists(file);
 }
 
 std::string SystemUtils::probeFiles(const std::vector<std::string>& variants, const std::string& suffix)

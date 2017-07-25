@@ -38,6 +38,7 @@ public:
 	virtual ~IAnyTypeParameter() {}
 	virtual std::string toString() const = 0;
 	virtual const std::string& name() const = 0;
+	virtual void markNotInitialized() = 0;
 
 	virtual void addToPO(boost::program_options::options_description& od, const std::string& prefix = "", bool defaultsNeeded = false) const = 0;
 	virtual bool getFromPO(const boost::program_options::variables_map& clOpts, const std::string& optionalPrefix = "") = 0;
@@ -71,7 +72,7 @@ struct Parameter : public IAnyTypeParameter
 		initNoDefault();
 	}
 
-	const T& get()
+	T& get()
 	{
 		CIC_ASSERT(m_isInitialized, std::string("Parameter ") + m_name + " usage without initialization!");
 		return m_value;
@@ -85,6 +86,8 @@ struct Parameter : public IAnyTypeParameter
 	}
 
 	bool initialized() const override {	return m_isInitialized; }
+
+	void markNotInitialized() override { m_isInitialized = false; }
 
 	void addToPO(boost::program_options::options_description& od, const std::string& prefix = "", bool defaultsNeeded = false) const override;
 
@@ -293,6 +296,7 @@ public:
 	const boost::program_options::variables_map& variablesMap();
 	const boost::property_tree::ptree& propertyTree();
 
+	ParametersGroup* group(const std::string& groupName);
 	ParametersGroup& operator[](const std::string& groupName);
 
 private:
@@ -308,11 +312,19 @@ private:
 	boost::property_tree::ptree m_pt;
 };
 
+class PreconfiguredOperations
+{
+public:
+	static void addGeneralOptions(Parameters& p, const std::string& group = "General", bool help = true, bool saveIni = true, bool loadIni = true);
+	static bool quickReadConfiguration(Parameters& p, const std::vector<std::string>& configFiles, int argc, const char * const * argv, const std::string& group = "General");
+};
+
 class SystemUtils
 {
 public:
 	static std::string homeDir();
 	static std::string replaceTilta(const std::string& source);
+	static bool probeFile(const std::string& file);
 	static std::string probeFiles(const std::vector<std::string>& variants, const std::string& suffix = "");
 };
 

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.1.0 FATAL_ERROR)
 
-project("Project-name")
+project("cli-ini-config")
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g -DDEBUG")
@@ -37,7 +37,8 @@ macro(export_libs)
 endmacro()
 
 add_subdirectory(cic)
-add_subdirectory(example)
+add_subdirectory(example1)
+add_subdirectory(example2)
 # To enable ctest usage
 enable_testing()
 

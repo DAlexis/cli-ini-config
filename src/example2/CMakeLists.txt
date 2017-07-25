@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8)
 
-project(cic-example)
+project(cic-example2)
 
 include_directories (
     ${cic_INCLUDE_DIRS}
