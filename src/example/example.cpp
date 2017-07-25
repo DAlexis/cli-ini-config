@@ -27,6 +27,11 @@ int main(int argc, char** argv)
 			"Interface",
 			"User interface parameters",
 			Parameter<std::string>("greeter", "String parameter", "Hi, user.")
+		),
+		ParametersGroup(
+			"Interface2",
+			"User interface parameters",
+			Parameter<std::string>("greeter", "String parameter", "Hi, user.")
 		)
 	);
 	p.parseCmdline(argc, argv);

@@ -4,7 +4,6 @@
  * same time
  *
  * @todo: Boolean parameters support in form --bool-parameter=false
- * @todo: Collision support for same parameters in different groups
  */
 
 #ifndef LIBHEADER_INCLUDED
@@ -40,8 +39,8 @@ public:
 	virtual std::string toString() const = 0;
 	virtual const std::string& name() const = 0;
 
-	virtual void addToPO(boost::program_options::options_description& od) const = 0;
-	virtual bool getFromPO(const boost::program_options::variables_map& clOpts) = 0;
+	virtual void addToPO(boost::program_options::options_description& od, const std::string& prefix = "", bool defaultsNeeded = false) const = 0;
+	virtual bool getFromPO(const boost::program_options::variables_map& clOpts, const std::string& optionalPrefix = "") = 0;
 	virtual bool getFromPT(const boost::property_tree::ptree& pt) = 0;
 
 	virtual void writeIniItem(std::ostream& stream) = 0;
@@ -72,7 +71,7 @@ struct Parameter : public IAnyTypeParameter
 		initNoDefault();
 	}
 
-	T& get()
+	const T& get()
 	{
 		CIC_ASSERT(m_isInitialized, std::string("Parameter ") + m_name + " usage without initialization!");
 		return m_value;
@@ -85,9 +84,11 @@ struct Parameter : public IAnyTypeParameter
 		return StringTool<T>::to_string(m_value);
 	}
 
-	void addToPO(boost::program_options::options_description& od) const override;
+	bool initialized() const override {	return m_isInitialized; }
 
-	bool getFromPO(const boost::program_options::variables_map& clOpts) override;
+	void addToPO(boost::program_options::options_description& od, const std::string& prefix = "", bool defaultsNeeded = false) const override;
+
+	bool getFromPO(const boost::program_options::variables_map& clOpts, const std::string& optionalPrefix = "") override;
 
 	bool getFromPT(const boost::property_tree::ptree& pt)
 	{
@@ -116,17 +117,15 @@ struct Parameter : public IAnyTypeParameter
 			stream << "<value>" << std::endl;
 	}
 
-	bool initialized() const override {	return m_isInitialized; }
-
 	bool setByUser() const override { return m_setByUser; }
 
+private:
 	virtual IAnyTypeParameter* copy() const override
 	{
 		Parameter *p = new Parameter(*this);
 		return p;
 	}
 
-private:
 	/// Function to be easy overrided for bool parameter
 	void initNoDefault();
 
@@ -139,26 +138,40 @@ private:
 };
 
 template<typename T>
-void Parameter<T>::addToPO(boost::program_options::options_description& od) const
+void Parameter<T>::addToPO(boost::program_options::options_description& od, const std::string& prefix, bool defaultsNeeded) const
 {
 	if (m_parType == ParamterType::cmdLine || m_parType == ParamterType::both)
 	{
-		od.add_options()
-			(m_name.c_str(), boost::program_options::value<T>(), m_description.c_str());
+		if (m_isInitialized && defaultsNeeded)
+		{
+			od.add_options()
+				((prefix + m_name).c_str(), boost::program_options::value<T>()->default_value(m_value), m_description.c_str());
+		} else {
+			od.add_options()
+				((prefix + m_name).c_str(), boost::program_options::value<T>(), m_description.c_str());
+		}
 	}
 }
 
 template<typename T>
-bool Parameter<T>::getFromPO(const boost::program_options::variables_map& clOpts)
+bool Parameter<T>::getFromPO(const boost::program_options::variables_map& clOpts, const std::string& optionalPrefix)
 {
 	if (m_parType == ParamterType::cmdLine || m_parType == ParamterType::both)
 	{
-		if (clOpts.count(m_name.c_str()) != 0)
-		{
-			m_value = clOpts[m_name.c_str()].as<T>();
+		auto tryName = [this, &clOpts](const std::string& name) -> bool {
+			if (clOpts.count(name.c_str()) == 0)
+			{
+				return false;
+			}
+
+			m_value = clOpts[name.c_str()].as<T>();
 			m_setByUser = true;
 			m_isInitialized = true;
-		}
+			return true;
+		};
+
+		if (!tryName(optionalPrefix + m_name))
+			tryName(m_name);
 	}
 	return initialized();
 }
@@ -167,10 +180,10 @@ template<typename T>
 void Parameter<T>::initNoDefault() { }
 
 template<>
-void Parameter<bool>::addToPO(boost::program_options::options_description& od) const;
+void Parameter<bool>::addToPO(boost::program_options::options_description& od, const std::string& prefix, bool defaultsNeeded) const;
 
 template<>
-bool Parameter<bool>::getFromPO(const boost::program_options::variables_map& clOpts);
+bool Parameter<bool>::getFromPO(const boost::program_options::variables_map& clOpts, const std::string& optionalPrefix);
 
 template<>
 void Parameter<bool>::initNoDefault();
@@ -182,7 +195,6 @@ public:
 
 	template <typename... Args>
 	ParametersGroup(const char* groupName, const char* description, Args... args) :
-		m_optionsDescr(description),
 		m_groupName(groupName),
 		m_description(description)
 	{
@@ -208,7 +220,8 @@ public:
 	void add(const IAnyTypeParameter& parameter);
 
 	void readPOVarsMap(const boost::program_options::variables_map& clOpts);
-	const boost::program_options::options_description& getOptionsDesctiption();
+
+	const boost::program_options::options_description& getOptionsDesctiption(bool groupsNeeded, bool defaultsNeeded = false);
 
 	/**
 	 * Read variables from boost::property_tree
@@ -220,7 +233,7 @@ public:
 	IAnyTypeParameter& getInterface(const std::string& name);
 
 	template <typename T>
-	T& get(const std::string& name)
+	const T& get(const std::string& name)
 	{
 		return dynamic_cast<Parameter<T>&>(getInterface(name)).get();
 	}
@@ -231,7 +244,8 @@ public:
 	}
 
 private:
-	boost::program_options::options_description m_optionsDescr;
+	std::unique_ptr<boost::program_options::options_description> m_optionsDescr;
+	std::unique_ptr<boost::program_options::options_description> m_optionsDescrWithGroup;
 
 	bool areAllInitialized();
 	std::string m_groupName;
@@ -246,7 +260,7 @@ public:
 
 	template <typename... Args>
 	Parameters(const char* title, Args&&... args) :
-		m_allOptions(title)
+		m_title(title)
 	{
 		addGroup(std::forward<Args>(args)...);
 	}
@@ -268,11 +282,11 @@ public:
 	void addGroup(ParametersGroup&& pg);
 	void addGroup(ParametersGroup& pg);
 
-	void parseCmdline(int argc, const char * const * argv);
+	void parseCmdline(int argc, const char * const * argv, bool useFull = true, bool useShort = true);
 	void parseIni(const char* filename);
 	void parseIni(const std::vector<std::string>& variants, const std::string& suffix = "");
 
-	void cmdlineHelp(std::ostream& stream);
+	void cmdlineHelp(std::ostream& stream, bool printFullForm = false);
 	void writeIni(std::ostream& stream);
 	void writeIni(const char* filename);
 
@@ -282,9 +296,14 @@ public:
 	ParametersGroup& operator[](const std::string& groupName);
 
 private:
+	void rebuildOptionsDescriptions(bool defaultsNeeded = false);
+
+	std::string m_title;
 	std::list<std::unique_ptr<ParametersGroup>> m_pgOwners;
 	std::map<std::string, ParametersGroup*> m_groups;
-	boost::program_options::options_description m_allOptions;
+	std::unique_ptr<boost::program_options::options_description> m_clOptions;
+	std::unique_ptr<boost::program_options::options_description> m_clOptionsWithGroups;
+	std::unique_ptr<boost::program_options::options_description> m_clOptionsBoth;
 	boost::program_options::variables_map m_vm;
 	boost::property_tree::ptree m_pt;
 };

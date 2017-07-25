@@ -167,7 +167,7 @@ TEST_F(ParametersGroupIO, ParseConsoleOnlyParameresGroup)
 
 	po::variables_map vmOptions;
 
-	ASSERT_NO_THROW(po::store(po::parse_command_line(argc, argv, pg.getOptionsDesctiption()), vmOptions));
+	ASSERT_NO_THROW(po::store(po::parse_command_line(argc, argv, pg.getOptionsDesctiption(false)), vmOptions));
 	ASSERT_NO_THROW(po::notify(vmOptions));
 	ASSERT_NO_THROW(pg.readPOVarsMap(vmOptions));
 
@@ -310,6 +310,28 @@ TEST_F(ParametersShortInit, Cmdline)
 	EXPECT_EQ(p["Group2"].get<std::string>("string-parameter"), "hello");
 }
 
+TEST_F(ParametersShortInit, CmdlineBoolParse)
+{
+	int argc = 2;
+	const char* argv[argc];
+	argv[0] = "/tmp/test";
+	argv[1] = "--bool-parameter";
+
+	ASSERT_NO_THROW(p.parseCmdline(argc, argv));
+	EXPECT_EQ(p["Group1"].get<bool>("bool-parameter"), true);
+
+	// Tests below could not run because --bool-parameter=true is not supported
+	/*
+	argv[1] = "--bool-parameter=false";
+	ASSERT_NO_THROW(p.parseCmdline(argc, argv));
+	EXPECT_EQ(p["Group1"].get<bool>("bool-parameter"), false);
+
+	argv[1] = "--bool-parameter=true";
+	ASSERT_NO_THROW(p.parseCmdline(argc, argv));
+	EXPECT_EQ(p["Group1"].get<bool>("bool-parameter"), true);
+	*/
+}
+
 TEST_F(ParametersShortInit, IniFile)
 {
 	ASSERT_TRUE(createTestIniFile()) << "Cannot create test ini file";
@@ -336,27 +358,59 @@ TEST_F(ParametersShortInit, CmdlineOverridesIni)
 	argv[3] = "--double-parameter=-32.12";
 
 	ASSERT_NO_THROW(p.parseIni(testConfigFilename));
+
+	EXPECT_EQ(p["Group2"].get<std::string>("string-parameter"), "lol") << "Ini parsing does not work";
+
 	ASSERT_NO_THROW(p.parseCmdline(argc, argv));
+
+	EXPECT_EQ(p["Group2"].get<std::string>("string-parameter"), "lol") << "Cmdline parsing broke other parameter";
 
 	EXPECT_EQ(p["Group1"].get<bool>("bool-parameter"), true);
 	EXPECT_EQ(p["Group1"].get<int>("int-parameter"), 321);
 	EXPECT_EQ(p["Group2"].get<double>("double-parameter"), -32.12);
-	EXPECT_EQ(p["Group2"].get<std::string>("string-parameter"), "lol");
 }
+
+TEST_F(ParametersShortInit, CmdlineWithGroups)
+{
+	Remover r;
+
+	constexpr int argc = 4;
+	const char* argv[argc];
+	argv[0] = "/tmp/test";
+	argv[1] = "--Group1.bool-parameter";
+	argv[2] = "--int-parameter=321";
+	argv[3] = "--Group2.double-parameter=-32.12";
+
+	ASSERT_NO_THROW(p.parseCmdline(argc, argv, true, true));
+
+	EXPECT_EQ(p["Group1"].get<bool>("bool-parameter"), true);
+	EXPECT_EQ(p["Group1"].get<int>("int-parameter"), 321);
+	EXPECT_EQ(p["Group2"].get<double>("double-parameter"), -32.12);
+}
+
 
 TEST_F(ParametersShortInit, TextGeneration)
 {
 	{
 		std::ostringstream oss;
-		ASSERT_NO_THROW(p.cmdlineHelp(oss));
-		ASSERT_FALSE(oss.str().empty());
-		//ASSERT_NO_THROW(p.cmdlineHelp(std::cout));
+		EXPECT_NO_THROW(p.cmdlineHelp(oss, false));
+		EXPECT_FALSE(oss.str().empty());
+		EXPECT_NE(oss.str().find("lol wut"), string::npos) << "Default value was not shown in help";
+		//std::cout << oss.str();
 	}
 	{
 		std::ostringstream oss;
-		ASSERT_NO_THROW(p.writeIni(oss));
-		ASSERT_FALSE(oss.str().empty());
-		//ASSERT_NO_THROW(p.writeIni(std::cout));
+		EXPECT_NO_THROW(p.cmdlineHelp(oss, true));
+		EXPECT_FALSE(oss.str().empty());
+		EXPECT_NE(oss.str().find("lol wut"), string::npos) << "Default value was not shown in help";
+		//std::cout << oss.str();
+	}
+	{
+		std::ostringstream oss;
+		EXPECT_NO_THROW(p.writeIni(oss));
+		EXPECT_FALSE(oss.str().empty());
+		EXPECT_NE(oss.str().find("lol wut"), string::npos) << "Default value was not shown in ini file";
+		//std::cout << oss.str();
 	}
 }
 

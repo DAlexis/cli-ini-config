@@ -11,30 +11,41 @@
 using namespace cic;
 
 template<>
-void Parameter<bool>::addToPO(boost::program_options::options_description& od) const
+void Parameter<bool>::addToPO(boost::program_options::options_description& od, const std::string& prefix, bool defaultsNeeded) const
 {
 	if (m_parType == ParamterType::cmdLine || m_parType == ParamterType::both)
 	{
-		od.add_options()
-			(m_name.c_str(), m_description.c_str());
+		if (m_isInitialized && defaultsNeeded)
+		{
+			od.add_options()
+				((prefix + m_name).c_str(), boost::program_options::value<bool>()->default_value(m_value), m_description.c_str());
+		} else {
+			od.add_options()
+				((prefix + m_name).c_str(), m_description.c_str());
+		}
 	}
 }
 
 template<>
-bool Parameter<bool>::getFromPO(const boost::program_options::variables_map& clOpts)
+bool Parameter<bool>::getFromPO(const boost::program_options::variables_map& clOpts, const std::string& optionalPrefix)
 {
 	if (m_parType == ParamterType::cmdLine || m_parType == ParamterType::both)
 	{
-		if (clOpts.count(m_name.c_str()) != 0)
-		{
+		auto tryName = [this, &clOpts](const std::string& name) -> bool {
+			if (clOpts.count(name.c_str()) == 0)
+				return false;
+
 			try {
-				m_value = clOpts[m_name.c_str()].as<bool>();
+				m_value = clOpts[name.c_str()].as<bool>();
 			} catch (std::exception &) {
 				m_value = true;
 			}
 			m_setByUser = true;
 			m_isInitialized = true;
-		}
+			return true;
+		};
+		if (!tryName(optionalPrefix + m_name))
+			tryName(m_name);
 	}
 	return initialized();
 }
@@ -47,7 +58,6 @@ void Parameter<bool>::initNoDefault()
 }
 
 ParametersGroup::ParametersGroup(const char* groupName, const char* description) :
-		m_optionsDescr(description),
 		m_groupName(groupName),
 		m_description(description)
 {
@@ -55,6 +65,7 @@ ParametersGroup::ParametersGroup(const char* groupName, const char* description)
 
 ParametersGroup::ParametersGroup(ParametersGroup&& pg) :
 		m_optionsDescr(std::move(pg.m_optionsDescr)),
+		m_optionsDescrWithGroup(std::move(pg.m_optionsDescrWithGroup)),
 		m_groupName(std::move(pg.m_groupName)),
 		m_description(std::move(pg.m_description)),
 		m_parameters(std::move(pg.m_parameters))
@@ -69,20 +80,30 @@ const std::string& ParametersGroup::name()
 void ParametersGroup::add(const IAnyTypeParameter& parameter)
 {
 	m_parameters[parameter.name()] = std::unique_ptr<IAnyTypeParameter>(parameter.copy());
-	m_parameters[parameter.name()]->addToPO(m_optionsDescr);
 }
 
 void ParametersGroup::readPOVarsMap(const boost::program_options::variables_map& clOpts)
 {
 	for (auto &it : m_parameters)
 	{
-		it.second->getFromPO(clOpts);
+		it.second->getFromPO(clOpts, m_groupName + ".");
 	}
 }
 
-const boost::program_options::options_description& ParametersGroup::getOptionsDesctiption()
+const boost::program_options::options_description& ParametersGroup::getOptionsDesctiption(bool groupsNeeded, bool defaultsNeeded)
 {
-	return m_optionsDescr;
+	if (groupsNeeded)
+	{
+		m_optionsDescrWithGroup.reset(new boost::program_options::options_description(m_groupName.c_str()));
+		for (auto &it : m_parameters)
+			it.second->addToPO(*m_optionsDescrWithGroup, m_groupName + ".", defaultsNeeded);
+		return *m_optionsDescrWithGroup;
+	} else {
+		m_optionsDescr.reset(new boost::program_options::options_description(m_groupName.c_str()));
+		for (auto &it : m_parameters)
+			it.second->addToPO(*m_optionsDescr, "", defaultsNeeded);
+		return *m_optionsDescr;
+	}
 }
 
 bool ParametersGroup::readPT(const boost::property_tree::ptree& pt)
@@ -135,7 +156,7 @@ bool ParametersGroup::areAllInitialized()
 }
 
 Parameters::Parameters(const char* title) :
-		m_allOptions(title)
+		m_title(title)
 {
 }
 
@@ -148,16 +169,23 @@ void Parameters::addGroup(ParametersGroup&& pg)
 void Parameters::addGroup(ParametersGroup& pg)
 {
 	m_groups[pg.name()] = &pg;
-	m_allOptions.add(pg.getOptionsDesctiption());
 }
 
-void Parameters::parseCmdline(int argc, const char* const * argv)
+void Parameters::parseCmdline(int argc, const char* const * argv, bool useFull, bool useShort)
 {
 	m_vm.clear();
+	rebuildOptionsDescriptions();
 	namespace po = boost::program_options;
 	try
 	{
-		po::store(po::parse_command_line(argc, argv, m_allOptions), m_vm);
+		if (useFull && useShort)
+			po::store(po::parse_command_line(argc, argv, *m_clOptionsBoth), m_vm);
+		else if (useFull)
+			po::store(po::parse_command_line(argc, argv, *m_clOptionsWithGroups), m_vm);
+		else if (useShort)
+			po::store(po::parse_command_line(argc, argv, *m_clOptions), m_vm);
+		else
+			throw std::runtime_error("Parsing cmdline impossible: at least one of useFull, useShort should be true");
 		po::notify(m_vm);
 	}
 	catch (po::error& e)
@@ -205,9 +233,13 @@ void Parameters::parseIni(const std::vector<std::string>& variants, const std::s
 	parseIni(filename.c_str());
 }
 
-void Parameters::cmdlineHelp(std::ostream& stream)
+void Parameters::cmdlineHelp(std::ostream& stream, bool printFullForm)
 {
-	stream << m_allOptions;
+	rebuildOptionsDescriptions(true);
+	if (printFullForm)
+		stream << *m_clOptionsWithGroups;
+	else
+		stream << *m_clOptions;
 }
 
 void Parameters::writeIni(std::ostream& stream)
@@ -237,6 +269,21 @@ const boost::property_tree::ptree& Parameters::propertyTree()
 ParametersGroup& Parameters::operator[](const std::string& groupName)
 {
 	return *m_groups[groupName];
+}
+
+void Parameters::rebuildOptionsDescriptions(bool defaultsNeeded)
+{
+	m_clOptions.reset(new boost::program_options::options_description(m_title.c_str()));
+	m_clOptionsWithGroups.reset(new boost::program_options::options_description(m_title.c_str()));
+	m_clOptionsBoth.reset(new boost::program_options::options_description());
+	for (auto &it : m_groups)
+	{
+		m_clOptions->add(it.second->getOptionsDesctiption(false, defaultsNeeded));
+		m_clOptionsWithGroups->add(it.second->getOptionsDesctiption(true, defaultsNeeded));
+
+		m_clOptionsBoth->add(it.second->getOptionsDesctiption(false, defaultsNeeded));
+		m_clOptionsBoth->add(it.second->getOptionsDesctiption(true, defaultsNeeded));
+	}
 }
 
 std::string SystemUtils::homeDir()
