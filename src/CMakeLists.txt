@@ -9,9 +9,9 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g -DNDEBUG")
 # This is to run all tests using 'make run-unit-tests' command.
 # Another way is simply run 'ctest -VV', but output is not colorized by default :(
 # This project may be a part of other cmake project so this trik ma be implementerd yet
-if (NOT COMMAND run_test)
+if (NOT COMMAND add_unit_test)
 	add_custom_target(run-unit-tests)
-	macro(run_test test_target)
+	macro(add_unit_test test_target)
 	  add_custom_target(${test_target}_runtest
 	      COMMAND ${test_target}
 	      DEPENDS ${test_target}

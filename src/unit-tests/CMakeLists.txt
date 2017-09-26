@@ -26,4 +26,4 @@ target_link_libraries (${PROJECT_NAME}
 add_test(NAME cic_testing
          COMMAND ${PROJECT_NAME})
 
-run_test(${PROJECT_NAME})
+add_unit_test(${PROJECT_NAME})
