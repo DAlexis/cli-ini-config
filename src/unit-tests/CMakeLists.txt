@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 2.8)
 
 project(cic-test)
 
-find_package (GTest REQUIRED)
 find_package (Threads)
 
 include_directories (
@@ -23,7 +22,4 @@ target_link_libraries (${PROJECT_NAME}
     ${CMAKE_THREAD_LIBS_INIT}
 )
 
-add_test(NAME cic_testing
-         COMMAND ${PROJECT_NAME})
-
-add_unit_test(${PROJECT_NAME})
+add_test(NAME cic_testing COMMAND ${PROJECT_NAME})
