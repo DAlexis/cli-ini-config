@@ -17,15 +17,8 @@ include_directories(${${PROJECT_NAME}_USED_INCDIRS})
 
 add_library(${PROJECT_NAME} STATIC ${LIB_SOURCE})
 
-target_compile_features(${PROJECT_NAME} PUBLIC cxx_rvalue_references)
-target_compile_features(${PROJECT_NAME} PUBLIC cxx_lambdas)
+set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 11)
 
-export_include_dirs(
-    ${PROJECT_SOURCE_DIR}
-    ${${PROJECT_NAME}_USED_INCDIRS}
-)
+target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR} ${Boost_INCLUDE_DIRS})
 
-export_libs(
-    ${PROJECT_NAME}
-    ${Boost_LIBRARIES}
-)
+target_link_libraries(${PROJECT_NAME} PUBLIC ${Boost_LIBRARIES})
